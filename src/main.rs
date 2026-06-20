@@ -2,13 +2,16 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use respon_cli::{
-    cli::{self, AttendArgs, Command},
+    cli::{AttendArgs, CheckArgs, Cli, Command},
+    diagnostics::Diagnostics,
     error::Result,
+    protocol::ResponClient,
 };
 
 fn run() -> Result<u8> {
-    let cli = cli::Cli::parse();
+    let cli = Cli::parse();
     match cli.command {
+        Command::Check(args) => check(args),
         Command::Attend(args) => attend(args),
     }
 }
@@ -20,6 +23,12 @@ fn main() -> ExitCode {
             ExitCode::from(error.exit_code())
         }
     }
+}
+
+fn check(args: CheckArgs) -> Result<u8> {
+    let diagnostics = Diagnostics::new(args.verbose);
+    let client = ResponClient::new(diagnostics, args.user_agent.as_deref())?;
+    return Ok(0);
 }
 
 fn attend(args: AttendArgs) -> Result<u8> {

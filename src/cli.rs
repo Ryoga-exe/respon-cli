@@ -9,13 +9,36 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    Check(CheckArgs),
     Attend(AttendArgs),
 }
 
 #[derive(Args)]
-pub struct AttendArgs {
+pub struct CheckArgs {
+    /// 9-digit respon attendance code
     #[arg(value_parser = validate_code)]
     pub code: String,
+
+    /// Override the HTTP User-Agent header
+    #[arg(long, value_name = "USER_AGENT")]
+    pub user_agent: Option<String>,
+
+    #[arg(short = 'v', long)]
+    pub verbose: bool,
+}
+
+#[derive(Args)]
+pub struct AttendArgs {
+    /// 9-digit respon attendance code
+    #[arg(value_parser = validate_code)]
+    pub code: String,
+
+    /// Override the HTTP User-Agent header
+    #[arg(long, value_name = "USER_AGENT")]
+    pub user_agent: Option<String>,
+
+    #[arg(short = 'v', long)]
+    pub verbose: bool,
 }
 
 fn validate_code(code: &str) -> Result<String, String> {
