@@ -2,5 +2,11 @@
 name = "respon-cli"
 version = "0.1.0"
 edition = "2024"
+description = "Command-line client for submitting respon attendance"
+
+[[bin]]
+name = "respon"
+path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
