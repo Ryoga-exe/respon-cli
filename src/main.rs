@@ -28,7 +28,8 @@ fn main() -> ExitCode {
 fn check(args: CheckArgs) -> Result<u8> {
     let diagnostics = Diagnostics::new(args.verbose);
     let client = ResponClient::new(diagnostics, args.user_agent.as_deref())?;
-    return Ok(0);
+    client.check(&args.code);
+    Ok(0)
 }
 
 fn attend(args: AttendArgs) -> Result<u8> {

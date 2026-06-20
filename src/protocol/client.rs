@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reqwest::{
+    Url,
     blocking::Client,
     cookie::Jar,
     header::{ACCEPT, ACCEPT_LANGUAGE},
@@ -9,6 +10,7 @@ use reqwest::{
 
 use crate::{diagnostics::Diagnostics, error::Result};
 
+const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
 
 pub struct ResponClient {
@@ -31,6 +33,17 @@ impl ResponClient {
     }
 
     pub fn check(&self, code: &str) -> Result<bool> {
+        self.submit_code(code)
+    }
+
+    fn submit_code(&self, code: &str) -> Result<bool> {
+        let attend_url = Url::parse(ATTEND_URL)?;
+        let response = self.follow.get(attend_url).send()?;
+        self.diagnostics.log(format!(
+            "GET {ATTEND_URL} -> {} {}",
+            response.status(),
+            response.url()
+        ));
         Ok(false)
     }
 }
