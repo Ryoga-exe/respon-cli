@@ -14,5 +14,14 @@ pub enum Command {
 
 #[derive(Args)]
 pub struct AttendArgs {
+    #[arg(value_parser = validate_code)]
     pub code: String,
+}
+
+fn validate_code(code: &str) -> Result<String, String> {
+    if code.len() == 9 && code.bytes().all(|byte| byte.is_ascii_digit()) {
+        Ok(String::from(code))
+    } else {
+        Err(String::from("code must be exactly 9 ASCII digits"))
+    }
 }
