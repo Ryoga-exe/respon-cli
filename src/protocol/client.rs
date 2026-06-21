@@ -14,11 +14,31 @@ use crate::{
 };
 
 const ATMNB_URL: &str = "https://atmnb.tsukuba.ac.jp";
-const MANABA_HOME_URL: &str = "https://manaba.tsukuba.ac.jp/ct/home";
 const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const IDP_HOST: &str = "idp.account.tsukuba.ac.jp";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
 
+#[derive(Debug, Clone)]
+pub struct CheckedCode {
+    pub location: Url,
+    pub card_id: String,
+    needs_authentication: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Completion {
+    pub card_id: Option<String>,
+    pub answer_order: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CheckStatus {
+    Available(CheckedCode),
+    AlreadySubmitted {
+        url: Url,
+        completion: Option<Completion>,
+    },
+}
 pub struct ResponClient {
     follow: Client,
     no_redirect: Client,
