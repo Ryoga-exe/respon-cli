@@ -11,6 +11,7 @@ use reqwest::{
 use crate::{
     diagnostics::Diagnostics,
     error::{Error, Result},
+    protocol::page::CodeRejection,
 };
 
 const ATMNB_URL: &str = "https://atmnb.tsukuba.ac.jp";
@@ -18,26 +19,30 @@ const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const IDP_HOST: &str = "idp.account.tsukuba.ac.jp";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, Clone)]
 pub struct CheckedCode {
     pub location: Url,
     pub card_id: String,
     needs_authentication: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Completion {
     pub card_id: Option<String>,
     pub answer_order: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
 pub enum CheckStatus {
     Available(CheckedCode),
     AlreadySubmitted {
         url: Url,
         completion: Option<Completion>,
     },
+    Unavailable(CodeRejection),
+}
+
+enum CodeStatus {
+    Accepted(CheckedCode),
+    AlreadySubmitted,
+    Unavailable(CodeRejection),
 }
 pub struct ResponClient {
     follow: Client,
@@ -58,11 +63,15 @@ impl ResponClient {
         })
     }
 
-    pub fn check(&self, code: &str) -> Result<bool> {
-        self.submit_code(code)
+    pub fn check(&self, code: &str) -> Result<CheckStatus> {
+        match self.submit_code(code)? {
+            CodeStatus::Accepted(_) => todo!("impl"),
+            CodeStatus::AlreadySubmitted => todo!("impl"),
+            CodeStatus::Unavailable(rejection) => Ok(CheckStatus::Unavailable(rejection)),
+        }
     }
 
-    fn submit_code(&self, code: &str) -> Result<bool> {
+    fn submit_code(&self, code: &str) -> Result<CodeStatus> {
         let attend_url = Url::parse(ATTEND_URL)?;
         let response = self.follow.get(attend_url.clone()).send()?;
         self.diagnostics.log(format!(
@@ -107,8 +116,7 @@ impl ResponClient {
                 || location.path().starts_with("/result/tsukuba/")
             {
                 let response = self.follow.get(location);
-                // AlreadySubmitted
-                return Ok(true);
+                return Ok(CodeStatus::AlreadySubmitted);
             }
 
             if location.path().starts_with("/attend-confirm/tsukuba/") {
@@ -125,7 +133,7 @@ impl ResponClient {
         }
 
         // Err(Error::Protocol("todo"))
-        Ok(false) // Protocol Error
+        todo!("error");
     }
 }
 
