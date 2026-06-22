@@ -66,6 +66,30 @@ impl CodeRejection {
             .then_some(true)
     }
 
+    pub fn status(&self) -> &'static str {
+        if self.errors.iter().any(|error| error == "NoSuchAttendCord") {
+            "not-found"
+        } else if self
+            .errors
+            .iter()
+            .any(|error| matches!(error.as_str(), "CannotDecodeCode" | "InvalidCallNumber"))
+        {
+            "invalid"
+        } else if self
+            .errors
+            .iter()
+            .any(|error| error == "InactiveCallNumber")
+        {
+            "inactive"
+        } else if self.errors.iter().any(|error| error == "AlreadyClosed") {
+            "closed"
+        } else if self.errors.iter().any(|error| error == "NotYetAccepted") {
+            "not-yet-open"
+        } else {
+            "unavailable"
+        }
+    }
+
     pub fn is_recognized(&self) -> bool {
         !self.errors.is_empty() && self.errors.iter().all(|error| is_known_rejection(error))
     }

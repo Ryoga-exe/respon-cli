@@ -60,6 +60,16 @@ fn available(args: QueryArgs) -> Result<u8> {
 }
 
 fn status(args: QueryArgs) -> Result<u8> {
-    println!("{}", args.code);
-    todo!("implement")
+    let diagnostics = Diagnostics::new(args.verbose);
+    let client = ResponClient::new(diagnostics, args.user_agent.as_deref())?;
+
+    match client.probe_code(&args.code)? {
+        ProbeStatus::Available(access) => {
+            println!("available; card={}", access.card_id());
+        }
+        ProbeStatus::Unavailable(rejection) => {
+            println!("{}: {}", rejection.status(), rejection.reason());
+        }
+    }
+    Ok(0)
 }
