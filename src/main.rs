@@ -1,12 +1,12 @@
 use std::{io, process::ExitCode};
 
 use clap::{Parser, builder::Str};
-use dialoguer::{Input, Password};
+use dialoguer::{Confirm, Input, Password};
 use respon_cli::{
     cli::{AttendArgs, Cli, Command, QueryArgs},
     diagnostics::Diagnostics,
     error::{Error, Result},
-    protocol::{AttendanceAccess, Credentials, ProbeStatus, ResponClient},
+    protocol::{AttendanceAccess, Credentials, PreparationStatus, ProbeStatus, ResponClient},
 };
 use zeroize::Zeroizing;
 
@@ -56,7 +56,27 @@ fn attend(args: AttendArgs) -> Result<u8> {
         }
     };
 
-    return Ok(0);
+    match preparetion {
+        PreparationStatus::AlreadySubmitted { url, completion } => {
+            // print_already_submitted
+            Ok(0)
+        }
+        PreparationStatus::Confirmation(confirmation) => {
+            println!("confirmation page reached: {}", confirmation.action);
+            if !yes
+                && !Confirm::new()
+                    .with_prompt("Submit attendance?")
+                    .default(false)
+                    .interact()?
+            {
+                println!("aborted");
+                return Ok(1);
+            }
+
+            // submit
+            Ok(0)
+        }
+    }
 }
 
 fn status(args: QueryArgs) -> Result<u8> {
