@@ -21,9 +21,25 @@ pub struct AttendArgs {
     #[arg(value_parser = validate_code)]
     pub code: String,
 
+    /// Username; prompts when omitted
+    #[arg(short = 'u', long, value_name = "USERNAME")]
+    pub username: Option<String>,
+
+    /// Password
+    #[arg(long, value_name = "PASSWORD", conflicts_with = "password_stdin")]
+    pub password: Option<String>,
+
+    /// Read the password from stdin; requires --username
+    #[arg(long, requires = "username", conflicts_with = "password")]
+    pub password_stdin: bool,
+
     /// Override the HTTP User-Agent header
     #[arg(long, value_name = "USER_AGENT")]
     pub user_agent: Option<String>,
+
+    /// Skip the final submissiopn confirmation
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 
     #[arg(short = 'v', long)]
     pub verbose: bool,

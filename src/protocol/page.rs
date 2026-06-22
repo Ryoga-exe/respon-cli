@@ -37,6 +37,16 @@ impl ParsedForm {
     }
 }
 
+pub struct ConfirmationSpec {
+    pub card_id: String,
+    pub action: Url,
+    pub fields: Vec<(String, String)>,
+}
+
+pub struct Completion {
+    pub card_id: Option<String>,
+    pub answer_order: Option<u64>,
+}
 pub struct CodeRejection {
     errors: Vec<String>,
 }
@@ -153,6 +163,84 @@ pub fn extract_authenticity_token(html: &str) -> Result<String> {
         .ok_or_else(|| Error::Protocol("authenticity_token was not found".to_owned()))
 }
 
+pub fn extract_confirmation(page: &Page) -> Result<ConfirmationSpec> {
+    if is_done(&page.body, &page.url) {
+        return Err(Error::Protocol(
+            "completion page is not a confirmation page".to_owned(),
+        ));
+    }
+    if page_kind(&page.body, &page.url) != PageKind::Confirm {
+        return Err(Error::Protocol(format!(
+            "expected confirmation page, got {}",
+            page.url
+        )));
+    }
+
+    let card_id = card_id(&page.url)
+        .ok_or_else(|| Error::Protocol(format!("card ID was not found in {}", page.url)))?;
+
+    if let Some(form) = extract_forms(&page.body)
+        .into_iter()
+        .find(|form| form.method == "post" && form.contains("authenticity_token"))
+    {
+        let action = page.url.join(&form.action)?;
+        return Ok(ConfirmationSpec {
+            card_id,
+            action,
+            fields: form.fields,
+        });
+    }
+
+    let json = extract_embedded_json(&page.body)
+        .ok_or_else(|| Error::Protocol("confirmation environment JSON was not found".to_owned()))?;
+    let token = json
+        .get("authenticity_token")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error::Protocol("confirmation token was not found".to_owned()))?;
+    let submit_value = if json.get("lang").and_then(Value::as_str) == Some("ja") {
+        "提出"
+    } else {
+        "Submit"
+    };
+
+    Ok(ConfirmationSpec {
+        card_id,
+        action: page.url.clone(),
+        fields: vec![
+            ("authenticity_token".to_owned(), token.to_owned()),
+            ("insertdb".to_owned(), submit_value.to_owned()),
+        ],
+    })
+}
+
+pub fn completion(page: &Page) -> Option<Completion> {
+    if !is_done(&page.body, &page.url) {
+        return None;
+    }
+    let json = extract_embedded_json(&page.body);
+    let answer_order = json.as_ref().and_then(|json| {
+        json.get("answerOrder")
+            .and_then(parse_u64)
+            .or_else(|| json.get("Answer")?.get("order").and_then(parse_u64))
+    });
+    Some(Completion {
+        card_id: card_id(&page.url).or_else(|| {
+            json.as_ref()
+                .and_then(|json| json.get("url")?.as_str())
+                .and_then(card_id_from_path)
+        }),
+        answer_order,
+    })
+}
+
+fn parse_u64(value: &Value) -> Option<u64> {
+    value.as_u64().or_else(|| value.as_str()?.parse().ok())
+}
+
+pub fn card_id(url: &Url) -> Option<String> {
+    card_id_from_path(url.path())
+}
+
 pub fn card_id_in_text(value: &str) -> Option<String> {
     [
         "/auth/tsukuba/",
@@ -166,6 +254,22 @@ pub fn card_id_in_text(value: &str) -> Option<String> {
         let id: String = rest.chars().take_while(char::is_ascii_digit).collect();
         (!id.is_empty()).then_some(id)
     })
+}
+
+fn card_id_from_path(path: &str) -> Option<String> {
+    let segments: Vec<_> = path.trim_matches('/').split('/').collect();
+    if segments.len() >= 3
+        && matches!(
+            segments[0],
+            "auth" | "attend-confirm" | "complete" | "result"
+        )
+        && segments[1] == "tsukuba"
+        && segments[2].chars().all(|ch| ch.is_ascii_digit())
+    {
+        Some(segments[2].to_owned())
+    } else {
+        None
+    }
 }
 
 pub fn page_kind(html: &str, url: &Url) -> PageKind {

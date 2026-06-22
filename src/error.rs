@@ -18,6 +18,12 @@ pub enum Error {
 
     #[error("invalid URL: {0}")]
     Url(#[from] url::ParseError),
+
+    #[error("could not read input: {0}")]
+    Input(#[from] std::io::Error),
+
+    #[error("interactive prompt failed: {0}")]
+    Prompt(#[from] dialoguer::Error),
 }
 
 impl Error {
@@ -27,6 +33,7 @@ impl Error {
             Self::Rejected(_) => 3,
             Self::Protocol(_) => 4,
             Self::Network(_) | Self::Url(_) => 5,
+            Self::Input(_) | Self::Prompt(_) => 1,
         }
     }
 }

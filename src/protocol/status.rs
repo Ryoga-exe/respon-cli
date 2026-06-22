@@ -1,6 +1,6 @@
 use url::Url;
 
-use crate::protocol::page::CodeRejection;
+use crate::protocol::page::{CodeRejection, Completion, ConfirmationSpec};
 
 pub enum AttendanceAccess {
     AuthenticationRequired { card_id: String, login_url: Url },
@@ -19,4 +19,17 @@ impl AttendanceAccess {
 pub enum ProbeStatus {
     Available(AttendanceAccess),
     Unavailable(CodeRejection),
+}
+
+pub enum PreparationStatus {
+    Confirmation(ConfirmationSpec),
+    AlreadySubmitted {
+        url: Url,
+        completion: Option<Completion>,
+    },
+}
+
+pub struct SubmissionResponse {
+    pub url: Url,
+    pub completion: Completion,
 }

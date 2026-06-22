@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fmt::format, sync::Arc, time::Duration};
 
 use reqwest::{
     blocking::Client,
@@ -7,13 +7,17 @@ use reqwest::{
     redirect::Policy,
 };
 use url::Url;
+use zeroize::Zeroizing;
 
 use crate::{
     diagnostics::Diagnostics,
     error::{Error, Result},
     protocol::{
-        page::{CodeRejection, card_id_in_text, extract_authenticity_token, is_done},
-        status::{AttendanceAccess, ProbeStatus},
+        page::{
+            CodeRejection, Page, card_id_in_text, completion, extract_authenticity_token,
+            extract_confirmation, is_done,
+        },
+        status::{AttendanceAccess, PreparationStatus, ProbeStatus},
     },
 };
 
@@ -21,6 +25,11 @@ const ATMNB_URL: &str = "https://atmnb.tsukuba.ac.jp";
 const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const IDP_HOST: &str = "idp.account.tsukuba.ac.jp";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
+
+pub struct Credentials {
+    pub username: String,
+    pub password: Zeroizing<String>,
+}
 
 enum ProbeRedirect {
     Available(AttendanceAccess),
@@ -106,6 +115,40 @@ impl ResponClient {
                 Ok(ProbeStatus::Unavailable(CodeRejection::from_page(&body)))
             }
         }
+    }
+
+    pub fn prepare_after_authentication(
+        &self,
+        login_url: &Url,
+        credentials: &Credentials,
+    ) -> Result<PreparationStatus> {
+        let page = self.authenticate(login_url.as_str(), credentials, "card")?;
+        self.preparation_status(page)
+    }
+
+    fn preparation_status(&self, page: Page) -> Result<PreparationStatus> {
+        self.diagnostics
+            .log(format!("card auth final -> {} {}", page.status, page.url));
+
+        if is_done(&page.body, &page.url) {
+            return Ok(PreparationStatus::AlreadySubmitted {
+                completion: completion(&page),
+                url: page.url,
+            });
+        }
+
+        Ok(PreparationStatus::Confirmation(extract_confirmation(
+            &page,
+        )?))
+    }
+
+    fn authenticate(
+        &self,
+        start_url: &str,
+        credentials: &Credentials,
+        label: &str,
+    ) -> Result<Page> {
+        todo!("implement")
     }
 }
 

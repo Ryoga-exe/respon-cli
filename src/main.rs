@@ -1,12 +1,14 @@
-use std::process::ExitCode;
+use std::{io, process::ExitCode};
 
-use clap::Parser;
+use clap::{Parser, builder::Str};
+use dialoguer::{Input, Password};
 use respon_cli::{
     cli::{AttendArgs, Cli, Command, QueryArgs},
     diagnostics::Diagnostics,
-    error::Result,
-    protocol::{ProbeStatus, ResponClient},
+    error::{Error, Result},
+    protocol::{AttendanceAccess, Credentials, ProbeStatus, ResponClient},
 };
+use zeroize::Zeroizing;
 
 fn main() -> ExitCode {
     match run() {
@@ -25,7 +27,35 @@ fn run() -> Result<u8> {
     }
 }
 fn attend(args: AttendArgs) -> Result<u8> {
-    println!("{}", args.code);
+    let AttendArgs {
+        code,
+        username,
+        password,
+        password_stdin,
+        user_agent,
+        yes,
+        verbose,
+    } = args;
+    let diagnostics = Diagnostics::new(verbose);
+    let client = ResponClient::new(diagnostics, user_agent.as_deref())?;
+    let access = match client.probe_code(&code)? {
+        ProbeStatus::Available(access) => {
+            println!("code accepted; card={}", access.card_id());
+            access
+        }
+        ProbeStatus::Unavailable(rejection) => return Err(Error::Rejected(rejection.reason())),
+    };
+
+    let preparetion = match access {
+        AttendanceAccess::AuthenticationRequired { login_url, .. } => {
+            let credentials = read_credentials(username, password, password_stdin)?;
+            client.prepare_after_authentication(&login_url, &credentials)?
+        }
+        AttendanceAccess::ConfirmationAvailable { page_url, .. } => {
+            todo!("wip");
+        }
+    };
+
     return Ok(0);
 }
 
@@ -42,4 +72,37 @@ fn status(args: QueryArgs) -> Result<u8> {
         }
     }
     Ok(0)
+}
+
+fn read_credentials(
+    username: Option<String>,
+    password: Option<String>,
+    password_stdin: bool,
+) -> Result<Credentials> {
+    let username = match username {
+        Some(username) => username,
+        None => Input::<String>::new().with_prompt("Username").interact()?,
+    };
+    if username.is_empty() {
+        return Err(Error::Authentication("username is required".to_owned()));
+    }
+
+    let password = Zeroizing::new(match password {
+        Some(password) => password,
+        None if password_stdin => read_password_stdin()?,
+        None => Password::new().with_prompt("Password").interact()?,
+    });
+    if password.is_empty() {
+        return Err(Error::Authentication("password is required".to_owned()));
+    }
+
+    Ok(Credentials { username, password })
+}
+
+fn read_password_stdin() -> Result<String> {
+    let mut password = String::new();
+    io::stdin().read_line(&mut password)?;
+    let trimmed_len = password.trim_end_matches(['\r', '\n']).len();
+    password.truncate(trimmed_len);
+    Ok(password)
 }
