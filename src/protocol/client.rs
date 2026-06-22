@@ -14,8 +14,9 @@ use crate::{
     error::{Error, Result},
     protocol::{
         page::{
-            CodeRejection, ConfirmationSpec, Page, card_id_in_text, completion,
-            extract_authenticity_token, extract_confirmation, is_done,
+            CodeRejection, ConfirmationSpec, Page, ParsedForm, authentication_failure,
+            card_id_in_text, completion, extract_authenticity_token, extract_confirmation,
+            extract_forms, is_done,
         },
         status::{AttendanceAccess, PreparationStatus, ProbeStatus, SubmissionResponse},
     },
@@ -175,7 +176,86 @@ impl ResponClient {
         credentials: &Credentials,
         label: &str,
     ) -> Result<Page> {
-        todo!("implement")
+        let start_url = Url::parse(start_url)?;
+        let response = self.follow.get(start_url.clone()).send()?;
+        let mut page = page_from_response(response)?;
+        self.log_auth_page(label, 1, "start", &page);
+        let mut credentials_submitted = false;
+
+        for step in 2..=10 {
+            if page.url.host_str() != Some(IDP_HOST) {
+                return Ok(page);
+            }
+
+            let forms = extract_forms(&page.body);
+            let mut form = if let Some(form) = forms
+                .iter()
+                .find(|form| form.contains("SAMLResponse") && form.contains("RelayState"))
+            {
+                form.clone()
+            } else if let Some(form) = forms
+                .iter()
+                .find(|form| form.contains("j_username") && form.contains("j_password"))
+            {
+                if credentials_submitted {
+                    let reason = authentication_failure(&page.body)
+                        .unwrap_or_else(|| "authentication returned to the login form".to_owned());
+                    return Err(Error::Authentication(reason));
+                }
+                credentials_submitted = true;
+                let mut form = form.clone();
+                form.set("j_username", &credentials.username);
+                form.set("j_password", credentials.password.as_str());
+                form.set("_eventId_proceed", "");
+                form
+            } else if let Some(form) = forms.iter().find(|form| form.method == "post") {
+                let mut form = form.clone();
+                for (name, value) in &mut form.fields {
+                    if name.starts_with("shib_idp_ls_success.") || name == "shib_idp_ls_supported" {
+                        *value = "true".to_owned();
+                    }
+                }
+                form.set("_eventid_proceed", "");
+                form
+            } else {
+                let reason = authentication_failure(&page.body)
+                    .unwrap_or_else(|| format!("no supported IdP form was found at {}", page.url));
+                return Err(Error::Authentication(reason));
+            };
+
+            let stage = if form.contains("SAMLResponse") {
+                "saml-post"
+            } else if form.contains("j_username") {
+                "credentials"
+            } else {
+                "storage"
+            };
+            let action = page.url.join(&form.action)?;
+            page = self.submit_idp_form(&action, &mut form)?;
+            self.log_auth_page(label, step, stage, &page);
+        }
+
+        Err(Error::Authentication(
+            "IdP authentication exceeded the redirect/form limit".to_owned(),
+        ))
+    }
+
+    fn submit_idp_form(&self, action: &Url, form: &mut ParsedForm) -> Result<Page> {
+        let response = self
+            .follow
+            .post(action.clone())
+            .header(ORIGIN, "https://idp.account.tsukuba.ac.jp")
+            .header(REFERER, "https://idp.account.tsukuba.ac.jp/")
+            .form(&form.fields)
+            .send()?;
+        page_from_response(response)
+    }
+
+    fn log_auth_page(&self, label: &str, step: usize, stage: &str, page: &Page) {
+        self.diagnostics.log(format!(
+            "{label} idp step {step} {stage} -> {} {}",
+            page.status, page.url
+        ));
     }
 }
 

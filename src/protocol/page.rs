@@ -20,6 +20,7 @@ pub enum PageKind {
     Unknown,
 }
 
+#[derive(Clone)]
 pub struct ParsedForm {
     pub method: String,
     pub action: String,
@@ -317,4 +318,28 @@ fn map_rejection(error: &str) -> &str {
         "NotYetAccepted" => "attendance acceptance has not started",
         other => other,
     }
+}
+
+pub fn authentication_failure(html: &str) -> Option<String> {
+    let observed_messages = [
+        "ユーザ名かパスワードが違います",
+        "ユーザID、パスワードが正しくありません",
+        "The username you entered cannot be identified",
+        "The user ID and password are not correct",
+    ];
+    if observed_messages
+        .iter()
+        .any(|message| html.contains(message))
+    {
+        return Some("user ID or password was not accepted".to_owned());
+    }
+
+    let forms = extract_forms(html);
+    if forms
+        .iter()
+        .any(|form| form.contains("j_username") && form.contains("j_password"))
+    {
+        return Some("authentication returned to the login form".to_owned());
+    }
+    None
 }
