@@ -11,10 +11,6 @@ pub struct Cli {
 pub enum Command {
     /// Authenticate and submit am attendance code
     Attend(AttendArgs),
-    /// Print whether an attendance code exists
-    Exists(QueryArgs),
-    /// Print whether an attendance code is currently available
-    Available(QueryArgs),
     /// Show the current status of an attendance code
     Status(QueryArgs),
 }

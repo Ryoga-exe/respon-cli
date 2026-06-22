@@ -52,20 +52,6 @@ impl CodeRejection {
         Self { errors }
     }
 
-    pub fn exists(&self) -> Option<bool> {
-        if self.errors.iter().any(|error| {
-            matches!(
-                error.as_str(),
-                "CannotDecodeCode" | "NoSuchAttendCord" | "InvalidCallNumber"
-            )
-        }) {
-            return Some(false);
-        }
-
-        (!self.errors.is_empty() && self.errors.iter().all(|error| is_known_rejection(error)))
-            .then_some(true)
-    }
-
     pub fn status(&self) -> &'static str {
         if self.errors.iter().any(|error| error == "NoSuchAttendCord") {
             "not-found"
@@ -88,10 +74,6 @@ impl CodeRejection {
         } else {
             "unavailable"
         }
-    }
-
-    pub fn is_recognized(&self) -> bool {
-        !self.errors.is_empty() && self.errors.iter().all(|error| is_known_rejection(error))
     }
 
     pub fn reason(&self) -> String {
@@ -211,26 +193,6 @@ pub fn is_done(html: &str, url: &Url) -> bool {
     page_kind(html, url) == PageKind::Done
         || html.contains("提出済み")
         || html.to_ascii_lowercase().contains("already submitted")
-}
-
-fn is_known_rejection(error: &str) -> bool {
-    matches!(
-        error,
-        "AnonymousNotPermitted"
-            | "CannotDecodeCode"
-            | "NoSuchAttendCord"
-            | "InvalidCallNumber"
-            | "InactiveCallNumber"
-            | "AuthenticationFailed"
-            | "BlankUsername"
-            | "BadUsername"
-            | "NotParticipant"
-            | "AlreadyClosed"
-            | "Interrupted"
-            | "ProhibitedChatRoom"
-            | "NoSubmitRoles"
-            | "NotYetAccepted"
-    )
 }
 
 fn map_rejection(error: &str) -> &str {
