@@ -1,6 +1,6 @@
 use std::{io, process::ExitCode};
 
-use clap::{Parser, builder::Str};
+use clap::Parser;
 use dialoguer::{Confirm, Input, Password};
 use respon_cli::{
     cli::{AttendArgs, Cli, Command, QueryArgs},
@@ -52,7 +52,7 @@ fn attend(args: AttendArgs) -> Result<u8> {
             client.prepare_after_authentication(&login_url, &credentials)?
         }
         AttendanceAccess::ConfirmationAvailable { page_url, .. } => {
-            todo!("wip");
+            client.prepare_confirmation(&page_url)?
         }
     };
 

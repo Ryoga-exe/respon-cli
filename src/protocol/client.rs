@@ -1,7 +1,7 @@
-use std::{fmt::format, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use reqwest::{
-    blocking::Client,
+    blocking::{Client, Response},
     cookie::Jar,
     header::{ACCEPT, ACCEPT_LANGUAGE, LOCATION, ORIGIN, REFERER},
     redirect::Policy,
@@ -103,9 +103,7 @@ impl ResponClient {
             ProbeRedirect::Available(access) => Ok(ProbeStatus::Available(access)),
             ProbeRedirect::Rejected(location) => {
                 let response = self.follow.get(location).send()?;
-                response.error_for_status_ref()?;
-                let url = response.url().clone();
-                let body = response.text()?;
+                let Page { body, url, .. } = page_from_response(response)?;
                 if is_done(&body, &url) {
                     return Err(Error::Protocol(format!(
                         "attendance-code rejection unexpectedly returned a completion page: {}",
@@ -124,6 +122,11 @@ impl ResponClient {
     ) -> Result<PreparationStatus> {
         let page = self.authenticate(login_url.as_str(), credentials, "card")?;
         self.preparation_status(page)
+    }
+
+    pub fn prepare_confirmation(&self, page_url: &Url) -> Result<PreparationStatus> {
+        let response = self.follow.get(page_url.clone()).send()?;
+        self.preparation_status(page_from_response(response)?)
     }
 
     fn preparation_status(&self, page: Page) -> Result<PreparationStatus> {
@@ -146,11 +149,24 @@ impl ResponClient {
         let response = self
             .follow
             .post(confirmation.action.clone())
-            .header(ORIGIN, ATTEND_URL)
+            .header(ORIGIN, ATMNB_URL)
             .header(REFERER, confirmation.action.as_str())
             .form(&confirmation.fields)
             .send()?;
-        todo!("wip")
+        let page = page_from_response(response)?;
+        self.diagnostics
+            .log(format!("submit final -> {} {}", page.status, page.url));
+
+        let completed = completion(&page).ok_or_else(|| {
+            Error::Protocol(format!(
+                "submission did not reach a completion page: {}",
+                page.url
+            ))
+        })?;
+        Ok(SubmissionResponse {
+            url: page.url,
+            completion: completed,
+        })
     }
 
     fn authenticate(
@@ -230,4 +246,12 @@ fn redirect_card_id(location: &Url) -> Result<String> {
             "card ID was not found in attendance-code redirect: {location}"
         ))
     })
+}
+
+fn page_from_response(response: Response) -> Result<Page> {
+    response.error_for_status_ref()?;
+    let status = response.status();
+    let url = response.url().clone();
+    let body = response.text()?;
+    Ok(Page { status, url, body })
 }
