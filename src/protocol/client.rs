@@ -1,17 +1,17 @@
 use std::{sync::Arc, time::Duration};
 
 use reqwest::{
-    Url,
     blocking::Client,
     cookie::Jar,
     header::{ACCEPT, ACCEPT_LANGUAGE, LOCATION, ORIGIN, REFERER},
     redirect::Policy,
 };
+use url::Url;
 
 use crate::{
     diagnostics::Diagnostics,
     error::{Error, Result},
-    protocol::page::CodeRejection,
+    protocol::{page::extract_authenticity_token, status::ProbeStatus},
 };
 
 const ATMNB_URL: &str = "https://atmnb.tsukuba.ac.jp";
@@ -19,31 +19,6 @@ const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const IDP_HOST: &str = "idp.account.tsukuba.ac.jp";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
 
-pub struct CheckedCode {
-    pub location: Url,
-    pub card_id: String,
-    needs_authentication: bool,
-}
-
-pub struct Completion {
-    pub card_id: Option<String>,
-    pub answer_order: Option<u64>,
-}
-
-pub enum CheckStatus {
-    Available(CheckedCode),
-    AlreadySubmitted {
-        url: Url,
-        completion: Option<Completion>,
-    },
-    Unavailable(CodeRejection),
-}
-
-enum CodeStatus {
-    Accepted(CheckedCode),
-    AlreadySubmitted,
-    Unavailable(CodeRejection),
-}
 pub struct ResponClient {
     follow: Client,
     no_redirect: Client,
@@ -63,15 +38,7 @@ impl ResponClient {
         })
     }
 
-    pub fn check(&self, code: &str) -> Result<CheckStatus> {
-        match self.submit_code(code)? {
-            CodeStatus::Accepted(_) => todo!("impl"),
-            CodeStatus::AlreadySubmitted => todo!("impl"),
-            CodeStatus::Unavailable(rejection) => Ok(CheckStatus::Unavailable(rejection)),
-        }
-    }
-
-    fn submit_code(&self, code: &str) -> Result<CodeStatus> {
+    pub fn probe_code(&self, code: &str) -> Result<ProbeStatus> {
         let attend_url = Url::parse(ATTEND_URL)?;
         let response = self.follow.get(attend_url.clone()).send()?;
         self.diagnostics.log(format!(
@@ -107,33 +74,14 @@ impl ResponClient {
             location.as_deref().unwrap_or("-")
         ));
 
-        let absolute = location
-            .as_deref()
-            .map(|value| attend_url.join(value))
-            .transpose()?;
-        if let Some(location) = absolute {
-            if location.path().starts_with("/complete/tsukuba/")
-                || location.path().starts_with("/result/tsukuba/")
-            {
-                let response = self.follow.get(location);
-                return Ok(CodeStatus::AlreadySubmitted);
-            }
+        let location = location.ok_or_else(|| {
+            Error::Protocol(format!(
+                "attendance-code request did not redirect: HTTP {status}"
+            ))
+        })?;
+        let location = attend_url.join(&location)?;
 
-            if location.path().starts_with("/attend-confirm/tsukuba/") {
-                todo!("implement")
-            }
-
-            if location.path() == "/ct/attend/pc" {
-                todo!("implement")
-            }
-
-            if location.path() == "/attend/tsukuba" {
-                todo!("implement")
-            }
-        }
-
-        // Err(Error::Protocol("todo"))
-        todo!("error");
+        todo!("impl")
     }
 }
 
@@ -158,8 +106,4 @@ fn build_client(jar: Arc<Jar>, redirect: Policy, user_agent: &str) -> Result<Cli
             headers
         })
         .build()?)
-}
-
-pub fn extract_authenticity_token(html: &str) -> Result<String> {
-    todo!("implement")
 }

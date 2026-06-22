@@ -9,27 +9,12 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    Check(CheckArgs),
     /// Authenticate and submit am attendance code
     Attend(AttendArgs),
     /// Print whether an attendance code exists
     Exists(QueryArgs),
     /// Show the current status of an attendance code
     Status(QueryArgs),
-}
-
-#[derive(Args)]
-pub struct CheckArgs {
-    /// 9-digit respon attendance code
-    #[arg(value_parser = validate_code)]
-    pub code: String,
-
-    /// Override the HTTP User-Agent header
-    #[arg(long, value_name = "USER_AGENT")]
-    pub user_agent: Option<String>,
-
-    #[arg(short = 'v', long)]
-    pub verbose: bool,
 }
 
 #[derive(Args)]
