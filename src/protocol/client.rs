@@ -14,10 +14,10 @@ use crate::{
     error::{Error, Result},
     protocol::{
         page::{
-            CodeRejection, Page, card_id_in_text, completion, extract_authenticity_token,
-            extract_confirmation, is_done,
+            CodeRejection, ConfirmationSpec, Page, card_id_in_text, completion,
+            extract_authenticity_token, extract_confirmation, is_done,
         },
-        status::{AttendanceAccess, PreparationStatus, ProbeStatus},
+        status::{AttendanceAccess, PreparationStatus, ProbeStatus, SubmissionResponse},
     },
 };
 
@@ -140,6 +140,17 @@ impl ResponClient {
         Ok(PreparationStatus::Confirmation(extract_confirmation(
             &page,
         )?))
+    }
+
+    pub fn submit(&self, confirmation: &ConfirmationSpec) -> Result<SubmissionResponse> {
+        let response = self
+            .follow
+            .post(confirmation.action.clone())
+            .header(ORIGIN, ATTEND_URL)
+            .header(REFERER, confirmation.action.as_str())
+            .form(&confirmation.fields)
+            .send()?;
+        todo!("wip")
     }
 
     fn authenticate(

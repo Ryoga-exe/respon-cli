@@ -58,7 +58,11 @@ fn attend(args: AttendArgs) -> Result<u8> {
 
     match preparetion {
         PreparationStatus::AlreadySubmitted { url, completion } => {
-            // print_already_submitted
+            if let Some(order) = completion.and_then(|value| value.answer_order) {
+                println!("already submitted: {url} (answer order {order})");
+            } else {
+                println!("already submitted: {url}");
+            }
             Ok(0)
         }
         PreparationStatus::Confirmation(confirmation) => {
@@ -73,7 +77,12 @@ fn attend(args: AttendArgs) -> Result<u8> {
                 return Ok(1);
             }
 
-            // submit
+            let submitted = client.submit(&confirmation)?;
+            if let Some(order) = submitted.completion.answer_order {
+                println!("submitted: {} (answer order {order})", submitted.url);
+            } else {
+                println!("submitted: {}", submitted.url);
+            }
             Ok(0)
         }
     }
