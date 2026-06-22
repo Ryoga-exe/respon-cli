@@ -4,8 +4,8 @@ use clap::Parser;
 use respon_cli::{
     cli::{AttendArgs, Cli, Command, QueryArgs},
     diagnostics::Diagnostics,
-    error::Result,
-    protocol::ResponClient,
+    error::{Error, Result},
+    protocol::{ProbeStatus, ResponClient},
 };
 
 fn main() -> ExitCode {
@@ -34,9 +34,18 @@ fn exists(args: QueryArgs) -> Result<u8> {
     let diagnostics = Diagnostics::new(args.verbose);
     let client = ResponClient::new(diagnostics, args.user_agent.as_deref())?;
 
-    todo!("implement")
+    let exists = match client.probe_code(&args.code)? {
+        ProbeStatus::Available(_) => true,
+        ProbeStatus::Unavailable(rejection) => match rejection.exists() {
+            Some(exists) => exists,
+            None => return Err(Error::Rejected(rejection.reason())),
+        },
+    };
+    println!("{exists}");
+    Ok(if exists { 0 } else { 1 })
 }
 
 fn status(args: QueryArgs) -> Result<u8> {
+    println!("{}", args.code);
     todo!("implement")
 }

@@ -1,5 +1,5 @@
 use reqwest::StatusCode;
-use scraper::{Element, ElementRef, Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
@@ -12,6 +12,7 @@ pub struct Page {
     pub body: String,
 }
 
+#[derive(PartialEq)]
 pub enum PageKind {
     Attend,
     Confirm,
@@ -49,6 +50,32 @@ impl CodeRejection {
             .filter_map(|value| value.as_str().map(ToOwned::to_owned))
             .collect();
         Self { errors }
+    }
+
+    pub fn exists(&self) -> Option<bool> {
+        if self.errors.iter().any(|error| {
+            matches!(
+                error.as_str(),
+                "CannotDecodeCode" | "NoSuchAttendCord" | "InvalidCallNumber"
+            )
+        }) {
+            return Some(false);
+        }
+
+        (!self.errors.is_empty() && self.errors.iter().all(|error| is_known_rejection(error)))
+            .then_some(true)
+    }
+
+    pub fn reason(&self) -> String {
+        if self.errors.is_empty() {
+            return "server returned the attendance-code page".to_owned();
+        }
+
+        self.errors
+            .iter()
+            .map(|error| map_rejection(error))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -114,4 +141,86 @@ pub fn extract_authenticity_token(html: &str) -> Result<String> {
         .flat_map(|form| form.fields)
         .find_map(|(name, value)| (name == "authenticity_token").then_some(value))
         .ok_or_else(|| Error::Protocol("authenticity_token was not found".to_owned()))
+}
+
+pub fn card_id_in_text(value: &str) -> Option<String> {
+    [
+        "/auth/tsukuba/",
+        "/attend-confirm/tsukuba/",
+        "/complete/tsukuba/",
+        "/result/tsukuba/",
+    ]
+    .into_iter()
+    .find_map(|marker| {
+        let rest = value.split_once(marker)?.1;
+        let id: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        (!id.is_empty()).then_some(id)
+    })
+}
+
+pub fn page_kind(html: &str, url: &Url) -> PageKind {
+    page_kind_from_path(url.path())
+        .or_else(|| {
+            extract_embedded_json(html)
+                .and_then(|json| json.get("url")?.as_str().map(ToOwned::to_owned))
+                .and_then(|path| page_kind_from_path(&path))
+        })
+        .unwrap_or(PageKind::Unknown)
+}
+
+fn page_kind_from_path(path: &str) -> Option<PageKind> {
+    if path.starts_with("/complete/tsukuba/") || path.starts_with("/result/tsukuba/") {
+        Some(PageKind::Done)
+    } else if path.starts_with("/attend-confirm/tsukuba/") {
+        Some(PageKind::Confirm)
+    } else if path == "/attend/tsukuba" {
+        Some(PageKind::Attend)
+    } else {
+        None
+    }
+}
+pub fn is_done(html: &str, url: &Url) -> bool {
+    page_kind(html, url) == PageKind::Done
+        || html.contains("提出済み")
+        || html.to_ascii_lowercase().contains("already submitted")
+}
+
+fn is_known_rejection(error: &str) -> bool {
+    matches!(
+        error,
+        "AnonymousNotPermitted"
+            | "CannotDecodeCode"
+            | "NoSuchAttendCord"
+            | "InvalidCallNumber"
+            | "InactiveCallNumber"
+            | "AuthenticationFailed"
+            | "BlankUsername"
+            | "BadUsername"
+            | "NotParticipant"
+            | "AlreadyClosed"
+            | "Interrupted"
+            | "ProhibitedChatRoom"
+            | "NoSubmitRoles"
+            | "NotYetAccepted"
+    )
+}
+
+fn map_rejection(error: &str) -> &str {
+    match error {
+        "AnonymousNotPermitted" => "anonymous submission is not permitted",
+        "CannotDecodeCode" => "server could not decode the attendance code",
+        "NoSuchAttendCord" => "attendance code does not exist",
+        "InvalidCallNumber" => "attendance code is invalid",
+        "InactiveCallNumber" => "attendance code is inactive",
+        "AuthenticationFailed" => "authentication failed",
+        "BlankUsername" => "user ID is blank",
+        "BadUsername" => "user ID is invalid",
+        "NotParticipant" => "user is not a participant",
+        "AlreadyClosed" => "attendance acceptance is already closed",
+        "Interrupted" => "attendance submission was interrupted",
+        "ProhibitedChatRoom" => "chat room submission is prohibited",
+        "NoSubmitRoles" => "no role can submit attendance",
+        "NotYetAccepted" => "attendance acceptance has not started",
+        other => other,
+    }
 }

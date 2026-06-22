@@ -11,13 +11,21 @@ use url::Url;
 use crate::{
     diagnostics::Diagnostics,
     error::{Error, Result},
-    protocol::{page::extract_authenticity_token, status::ProbeStatus},
+    protocol::{
+        page::{CodeRejection, card_id_in_text, extract_authenticity_token, is_done},
+        status::{AttendanceAccess, ProbeStatus},
+    },
 };
 
 const ATMNB_URL: &str = "https://atmnb.tsukuba.ac.jp";
 const ATTEND_URL: &str = "https://atmnb.tsukuba.ac.jp/attend/tsukuba";
 const IDP_HOST: &str = "idp.account.tsukuba.ac.jp";
 const DEFAULT_USER_AGENT: &str = concat!("respon-cli/", env!("CARGO_PKG_VERSION"));
+
+enum ProbeRedirect {
+    Available(AttendanceAccess),
+    Rejected(Url),
+}
 
 pub struct ResponClient {
     follow: Client,
@@ -41,6 +49,7 @@ impl ResponClient {
     pub fn probe_code(&self, code: &str) -> Result<ProbeStatus> {
         let attend_url = Url::parse(ATTEND_URL)?;
         let response = self.follow.get(attend_url.clone()).send()?;
+        response.error_for_status_ref()?;
         self.diagnostics.log(format!(
             "GET {ATTEND_URL} -> {} {}",
             response.status(),
@@ -81,7 +90,22 @@ impl ResponClient {
         })?;
         let location = attend_url.join(&location)?;
 
-        todo!("impl")
+        match classify_probe_redirect(location)? {
+            ProbeRedirect::Available(access) => Ok(ProbeStatus::Available(access)),
+            ProbeRedirect::Rejected(location) => {
+                let response = self.follow.get(location).send()?;
+                response.error_for_status_ref()?;
+                let url = response.url().clone();
+                let body = response.text()?;
+                if is_done(&body, &url) {
+                    return Err(Error::Protocol(format!(
+                        "attendance-code rejection unexpectedly returned a completion page: {}",
+                        url
+                    )));
+                }
+                Ok(ProbeStatus::Unavailable(CodeRejection::from_page(&body)))
+            }
+        }
     }
 }
 
@@ -106,4 +130,50 @@ fn build_client(jar: Arc<Jar>, redirect: Policy, user_agent: &str) -> Result<Cli
             headers
         })
         .build()?)
+}
+
+fn classify_probe_redirect(location: Url) -> Result<ProbeRedirect> {
+    if location.path().starts_with("/attend-confirm/tsukuba/") {
+        let card_id = redirect_card_id(&location)?;
+        return Ok(ProbeRedirect::Available(
+            AttendanceAccess::ConfirmationAvailable {
+                card_id,
+                page_url: location,
+            },
+        ));
+    }
+
+    if location.path() == "/ct/attend/pc" {
+        let card_id = redirect_card_id(&location)?;
+        return Ok(ProbeRedirect::Available(
+            AttendanceAccess::AuthenticationRequired {
+                card_id,
+                login_url: location,
+            },
+        ));
+    }
+
+    if location.path() == "/attend/tsukuba" {
+        return Ok(ProbeRedirect::Rejected(location));
+    }
+
+    if location.path().starts_with("/complete/tsukuba/")
+        || location.path().starts_with("/result/tsukuba/")
+    {
+        return Err(Error::Protocol(format!(
+            "attendance-code request reached a user-specific page before authentication: {location}"
+        )));
+    }
+
+    Err(Error::Protocol(format!(
+        "unexpected attendance-code redirect: {location}"
+    )))
+}
+
+fn redirect_card_id(location: &Url) -> Result<String> {
+    card_id_in_text(location.as_str()).ok_or_else(|| {
+        Error::Protocol(format!(
+            "card ID was not found in attendance-code redirect: {location}"
+        ))
+    })
 }
