@@ -22,6 +22,7 @@ fn run() -> Result<u8> {
     match cli.command {
         Command::Attend(args) => attend(args),
         Command::Exists(args) => exists(args),
+        Command::Available(args) => available(args),
         Command::Status(args) => status(args),
     }
 }
@@ -43,6 +44,19 @@ fn exists(args: QueryArgs) -> Result<u8> {
     };
     println!("{exists}");
     Ok(if exists { 0 } else { 1 })
+}
+
+fn available(args: QueryArgs) -> Result<u8> {
+    let diagnostics = Diagnostics::new(args.verbose);
+    let client = ResponClient::new(diagnostics, args.user_agent.as_deref())?;
+
+    let available = match client.probe_code(&args.code)? {
+        ProbeStatus::Available(_) => true,
+        ProbeStatus::Unavailable(rejection) if rejection.is_recognized() => false,
+        ProbeStatus::Unavailable(rejection) => return Err(Error::Rejected(rejection.reason())),
+    };
+    println!("{available}");
+    Ok(if available { 0 } else { 1 })
 }
 
 fn status(args: QueryArgs) -> Result<u8> {

@@ -66,6 +66,10 @@ impl CodeRejection {
             .then_some(true)
     }
 
+    pub fn is_recognized(&self) -> bool {
+        !self.errors.is_empty() && self.errors.iter().all(|error| is_known_rejection(error))
+    }
+
     pub fn reason(&self) -> String {
         if self.errors.is_empty() {
             return "server returned the attendance-code page".to_owned();
