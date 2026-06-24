@@ -9,7 +9,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Authenticate and submit am attendance code
+    /// Authenticate and submit an attendance code
     Attend(AttendArgs),
     /// Show the current status of an attendance code
     Status(QueryArgs),
